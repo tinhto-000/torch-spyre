@@ -145,7 +145,8 @@ def enable_spyre_decompositions(
         from torch_spyre.ops.fallbacks import fallback_ops
         from torch._ops import OpOverload, OpOverloadPacket
 
-        # Helper function to remove ops from decompositions
+        # Helper function to remove ops from decompositions.
+        # Object identity may fail across imports; fallback to string comparison.
         def _fetch_and_remove_op(ops):
             _removed = {}
             for op in ops:
@@ -155,10 +156,22 @@ def enable_spyre_decompositions(
                         op_ret = decomps.pop(opo, None)
                         if op_ret is not None:
                             _removed[opo] = op_ret
+                        else:
+                            opo_str = str(opo)
+                            for key in list(decomps.keys()):
+                                if str(key) == opo_str:
+                                    _removed[key] = decomps.pop(key)
+                                    break
                 elif isinstance(op, OpOverload):
                     op_ret = decomps.pop(op, None)
                     if op_ret is not None:
                         _removed[op] = op_ret
+                    else:
+                        op_str = str(op)
+                        for key in list(decomps.keys()):
+                            if str(key) == op_str:
+                                _removed[key] = decomps.pop(key)
+                                break
             return _removed
 
         # 1. Add/override spyre-specific decompositions

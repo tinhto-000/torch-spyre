@@ -139,7 +139,10 @@ def enable_spyre_compile_fx_wrapper():
 
 def _light_autoload():
     from . import decompositions  # noqa: F401
+    from .patches import _patch_make_fallback_for_spyre
 
+    # Patch Inductor's make_fallback before any compilation occurs.
+    _patch_make_fallback_for_spyre()
     enable_spyre_compile_fx_wrapper()
 
 

@@ -136,3 +136,30 @@ def enable_spyre_context(
             joint_graph.pass_patterns[:] = origin_pass
             Loops.has_large_inner_fn = old_loop
             GraphLowering._update_scheduler = old_update_scheduler  # type: ignore[method-assign]
+
+
+def _patch_make_fallback_for_spyre():
+    # Inductor raises AssertionError in CI when both a PyTorch decomposition and a Spyre
+    # fallback exist for the same op. Force override_decomp=True to bypass this check and
+    # prefer Spyre fallbacks. This race condition happens on all platforms but surfaces
+    # as an error in CI (env CI=true), particularly on s390x.
+    from torch._inductor import lowering, graph
+    from torch_spyre.ops.fallbacks import fallback_ops
+
+    _orig_make_fallback = lowering.make_fallback
+
+    def _patched_make_fallback(
+        op, layout_constraint=None, warn=True, override_decomp=False
+    ):
+        if op in fallback_ops:
+            override_decomp = True
+        return _orig_make_fallback(
+            op,
+            layout_constraint=layout_constraint,
+            warn=warn,
+            override_decomp=override_decomp,
+        )
+
+    lowering.make_fallback = _patched_make_fallback
+    if hasattr(graph, "make_fallback"):
+        graph.make_fallback = _patched_make_fallback
