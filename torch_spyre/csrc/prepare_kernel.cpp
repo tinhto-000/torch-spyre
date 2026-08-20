@@ -657,6 +657,7 @@ JobPlanBuilder::ValidationResult JobPlanBuilder::validate(
   // P2-14: JobPlan step ordering validation
   // Enforces the following rule when first step is HostCallback:
   // - HostCallback→H2D→Compute sequence must be maintained
+  // - Any subsequent H2D or D2H transfer must also be followed by Compute
   if (!job_plan.steps.empty()) {
     bool first_is_host_callback = dynamic_cast<const JobPlanStepHostCompute*>(
                                       job_plan.steps[0].get()) != nullptr;
@@ -664,7 +665,8 @@ JobPlanBuilder::ValidationResult JobPlanBuilder::validate(
     if (first_is_host_callback) {
       enum class ExpectedStep {
         H2D,      // Expecting H2D after HostCallback
-        Compute,  // Expecting Compute after H2D
+        Compute,  // Expecting Compute after H2D or D2H
+        Any,      // No constraint (after Compute)
       };
 
       // Step 0 is already verified as HostCallback; validate from step 1 onward
@@ -677,22 +679,31 @@ JobPlanBuilder::ValidationResult JobPlanBuilder::validate(
         // Check step type using dynamic_cast
         bool is_h2d =
             dynamic_cast<const JobPlanStepH2D*>(step.get()) != nullptr;
+        bool is_d2h =
+            dynamic_cast<const JobPlanStepD2H*>(step.get()) != nullptr;
         bool is_compute =
-            dynamic_cast<const JobPlanStepCompute*>(step.get()) != nullptr;
+            dynamic_cast<const JobPlanStepCompute*>(step.get()) != nullptr ||
+            dynamic_cast<const JobPlanStepHostCompute*>(step.get()) != nullptr;
 
         // Validate based on expected state
         switch (expected) {
           case ExpectedStep::H2D:
             TORCH_CHECK(is_h2d, "Step ordering violation at step ", i,
                         ": HostCallback must be followed by H2D transfer");
-            // H2D must be followed by Compute
             expected = ExpectedStep::Compute;
             break;
 
           case ExpectedStep::Compute:
             TORCH_CHECK(is_compute, "Step ordering violation at step ", i,
-                        ": H2D transfer must be followed by Compute");
+                        ": H2D/D2H transfer must be followed by Compute");
             sequence_complete = true;
+            expected = ExpectedStep::Any;
+            break;
+
+          case ExpectedStep::Any:
+            if (is_h2d || is_d2h) {
+              expected = ExpectedStep::Compute;
+            }
             break;
         }
       }
