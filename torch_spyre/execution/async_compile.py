@@ -48,10 +48,11 @@ from .kernel_cache import (
 
 logger = get_inductor_logger("sdsc_compile")
 
-# Wall-clock ceiling on ONE backend-compiler invocation, only used for dbo-opt
-# on the KTIR path. It bounds a wedged compiler -- which would otherwise block
-# torch.compile forever with no diagnostic -- rather than policing slowness:
-# both finish in well under a second on a small kernel.
+# Wall-clock ceiling on ONE backend-compiler invocation, applied to dbo-opt on
+# both the bundle and the KTIR path. It bounds a wedged compiler -- which would
+# otherwise block torch.compile forever with no diagnostic -- rather than
+# policing slowness: both finish in well under a second on a small kernel.
+# Raise it if a large bundle legitimately needs longer.
 _COMPILE_TIMEOUT_S = 60.0
 
 
@@ -122,8 +123,59 @@ def _compile_to_dir(
 
     with torch.profiler.record_function(f"dbo-opt:{kernel_name}"):
         try:
-            subprocess.run(cmd, check=True)
+            # capture_output: dbo-opt is an MLIR *-opt tool, so it prints the
+            # transformed module to stdout as a matter of course.
+            # ``dxp_standalone -d`` did not, which is why nothing captured it
+            # before -- left uncaptured, every kernel dumps its whole bundle
+            # module into the user's terminal.  Capturing also makes the
+            # compiler's own diagnostics available to the error paths below.
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=_COMPILE_TIMEOUT_S,
+            )
+            # dbo-opt can exit 0 having written nothing, so the artifact itself
+            # -- not the return code -- is the success condition.
+            spyrecode = os.path.join(compile_dir, "spyreCodeDir", "spyrecode.json")
+            if not os.path.exists(spyrecode):
+                raise RuntimeError(
+                    f"dbo-opt exited 0 but wrote no {spyrecode}.\n"
+                    f"command: {' '.join(cmd)}\n"
+                    f"stderr:\n{proc.stderr}"
+                )
+        except subprocess.TimeoutExpired as exc:
+            # Would otherwise land in the broad handler below, which collects
+            # correctly but re-raises a TimeoutExpired whose message says
+            # nothing about which knob relaxes it.
+            try_collect(
+                exc,
+                logger=logger,
+                failure_category=CATEGORY_COMPILE_BACKEND,
+                kernel_name=kernel_name,
+                code_dir=compile_dir,
+            )
+            raise RuntimeError(
+                f"dbo-opt timed out after {_COMPILE_TIMEOUT_S}s "
+                f"(_COMPILE_TIMEOUT_S).\ncommand: {' '.join(cmd)}"
+            ) from exc
         except subprocess.CalledProcessError as exc:
+            try_collect(
+                exc,
+                logger=logger,
+                failure_category=CATEGORY_COMPILE_BACKEND,
+                kernel_name=kernel_name,
+                code_dir=compile_dir,
+            )
+            # Re-raised as RuntimeError rather than bare: with capture_output
+            # the compiler's diagnostics no longer reach the terminal on their
+            # own, so a bare CalledProcessError would report only an exit code.
+            raise RuntimeError(
+                f"dbo-opt failed with exit code {exc.returncode}.\n"
+                f"command: {' '.join(cmd)}\nstderr:\n{exc.stderr}"
+            ) from exc
+        except Exception as exc:
             try_collect(
                 exc,
                 logger=logger,
