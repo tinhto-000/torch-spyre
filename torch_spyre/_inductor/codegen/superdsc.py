@@ -818,8 +818,9 @@ def _avgpool_sdsc_fields(iteration_space: dict, pool_params: dict) -> dict:
     # which the pipeline squeezes out (so its label was already dropped by
     # _align_pool_dim_labels).  Such an axis is a plain pass-through: emitting a
     # paddingSizes_/windowDim_ entry for it would reference a dim the SDSC no
-    # longer has, and dxp_standalone aborts with "Missing window size for padded
-    # size calculation".  So skip any axis whose window dim is absent.
+    # longer has, which the backend rejects -- dxp_standalone aborted with
+    # "Missing window size for padded size calculation".  So skip any axis whose
+    # window dim is absent.
     axes = [
         ("i", "ki", kH, sH, pH),
         ("j", "kj", kW, sW, pW),
