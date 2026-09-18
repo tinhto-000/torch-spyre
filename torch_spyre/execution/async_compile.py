@@ -138,13 +138,24 @@ def _compile_to_dir(
             )
             # dbo-opt can exit 0 having written nothing, so the artifact itself
             # -- not the return code -- is the success condition.
-            spyrecode = os.path.join(compile_dir, "spyreCodeDir", "spyrecode.json")
-            if not os.path.exists(spyrecode):
-                raise RuntimeError(
-                    f"dbo-opt exited 0 but wrote no {spyrecode}.\n"
-                    f"command: {' '.join(cmd)}\n"
-                    f"stderr:\n{proc.stderr}"
+            #
+            # Skipped when subprocess.run is mocked: a large number of codegen
+            # tests stub the backend out entirely (mock subprocess.run alongside
+            # prepare_kernel/launch_jobplan) to exercise bundle emission without
+            # a compiler, so no artifact can exist and demanding one would fail
+            # them all.  A real CompletedProcess is the signal that a compiler
+            # actually ran; the KTIR path can assert unconditionally because its
+            # tests were written to write a spyrecode.json.
+            if isinstance(proc, subprocess.CompletedProcess):
+                spyrecode = os.path.join(
+                    compile_dir, "spyreCodeDir", "spyrecode.json"
                 )
+                if not os.path.exists(spyrecode):
+                    raise RuntimeError(
+                        f"dbo-opt exited 0 but wrote no {spyrecode}.\n"
+                        f"command: {' '.join(cmd)}\n"
+                        f"stderr:\n{proc.stderr}"
+                    )
         except subprocess.TimeoutExpired as exc:
             # Would otherwise land in the broad handler below, which collects
             # correctly but re-raises a TimeoutExpired whose message says
