@@ -92,19 +92,37 @@ def _compile_to_dir(
     specs,
     pool_size: int,
 ) -> None:
-    """Run generate_bundle then dxp_standalone for ``specs`` into ``compile_dir``.
+    """Run generate_bundle then dbo-opt for ``specs`` into ``compile_dir``.
 
     Shared by the cache-miss path and the no-cache path so that any change to
     the compilation sequence is applied in both places automatically.
+
+    EXPERIMENTAL: this used to run ``dxp_standalone -d <dir>``.  dbo-opt takes
+    the SDSC bundle as its *default* input -- a function of
+    ``sdscbundle.sdsc_execute`` ops naming the SuperDsc JSON files beside it,
+    which is exactly what ``generate_bundle`` just wrote -- so no ``--from-ktir``
+    here: that flag selects the KTIR frontend and would reject the bundle.
+    Both backends write ``spyreCodeDir/{spyrecode.json, init_binary.bin}``, so
+    the cache contract and ``SpyreSDSCKernelRunner`` are unaffected.
     """
     generate_bundle(kernel_name, compile_dir, specs, pool_size=pool_size)
 
-    with torch.profiler.record_function(f"dxp_standalone:{kernel_name}"):
+    cmd = ["dbo-opt"]
+    # Only when configured: with no --device the dataflow scheduler falls back
+    # to the spyre_dd2_basic under DEEPTOOLS_PATH, so passing an empty value
+    # would be worse than omitting the flag.  KTIR_DEVICE_MLIR is reused rather
+    # than given a bundle-path spelling of its own while this is an experiment.
+    if _spyre_config.ktir_device_mlir:
+        cmd.append(f"--device={_spyre_config.ktir_device_mlir}")
+    cmd += [
+        f"--export-dir={compile_dir}",
+        "-kEmitSpyreCode",
+        os.path.join(compile_dir, "bundle.mlir"),
+    ]
+
+    with torch.profiler.record_function(f"dbo-opt:{kernel_name}"):
         try:
-            subprocess.run(
-                ["dxp_standalone", "-d", compile_dir],
-                check=True,
-            )
+            subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as exc:
             try_collect(
                 exc,
