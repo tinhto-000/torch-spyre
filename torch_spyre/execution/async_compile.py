@@ -77,6 +77,24 @@ def _check_ktir_device_prerequisites() -> None:
         )
 
 
+def _check_backend_compiler_on_path() -> None:
+    """Raise unless ``dbo-opt`` can be found, before a bundle is emitted.
+
+    Deliberately narrower than ``_check_ktir_device_prerequisites``: the bundle
+    path treats ``KTIR_DEVICE_MLIR`` as optional (dbo-opt falls back to the
+    spyre_dd2_basic under DEEPTOOLS_PATH), so requiring it here would reject a
+    working setup.
+
+    ``dxp_standalone`` was invoked with no such check, so a missing binary
+    surfaced as a bare FileNotFoundError from subprocess.run. Now that dbo-opt
+    is on the path of every compile, say what to do about it instead.
+    """
+    if shutil.which("dbo-opt") is None:
+        raise RuntimeError(
+            "cannot compile the bundle: dbo-opt not found.\n  - put dbo-opt on PATH"
+        )
+
+
 def get_output_dir(kernel_name: str):
     spyre_dir = os.path.join(cache_dir(), "inductor-spyre")
     os.makedirs(spyre_dir, exist_ok=True)
@@ -106,6 +124,10 @@ def _compile_to_dir(
     Both backends write ``spyreCodeDir/{spyrecode.json, init_binary.bin}``, so
     the cache contract and ``SpyreSDSCKernelRunner`` are unaffected.
     """
+    # Before emitting: a missing compiler is a configuration problem, and there
+    # is no reason to write a bundle nothing can consume.
+    _check_backend_compiler_on_path()
+
     generate_bundle(kernel_name, compile_dir, specs, pool_size=pool_size)
 
     cmd = ["dbo-opt"]
