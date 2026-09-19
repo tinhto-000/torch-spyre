@@ -1308,11 +1308,12 @@ def _create_sdsc_tensors(
             # appear in x's layout with scale=-1 (reduced_dim).
             #
             # M=1 (coarse-tiling GEMV): N leaks into x's physical dep index,
-            # so x_dim_order already contains y_stick (N).  DXP computes x's
-            # reuse dim by set-subtraction (KERNEL - INPUT); if N is in both,
-            # the result is empty and DXP asserts inp0_reuse_dim.size() == 1.
-            # Strip N from x's layout so INPUT stays K-only and DXP correctly
-            # identifies N as x's broadcast dim.
+            # so x_dim_order already contains y_stick (N).  The backend
+            # computes x's reuse dim by set-subtraction (KERNEL - INPUT); if N is
+            # in both, the result is empty and the backend asserts
+            # inp0_reuse_dim.size() == 1.  Strip N from x's layout so INPUT stays
+            # K-only and the backend correctly identifies N as x's broadcast
+            # dim.
             # Partition matmul_x_reuse_dims into two mutually exclusive,
             # exhaustive subsets based on membership in x's current dim_order.
             x_dim_order_set = set(dim_order)

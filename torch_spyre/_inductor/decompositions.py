@@ -127,7 +127,8 @@ def _num_tiles_for_max_extent(sequence_length: int, max_extent: int) -> int:
 def _kv_blocks_per_loop_group(num_q_tiles: int, num_kv_blocks: int) -> int:
     """Keep each SDPA backend bundle near the proven 4-by-4 size.
 
-    DXP specializes a counted Lq loop across every unrolled Lk block.  Bundle
+    The backend specializes a counted Lq loop across every unrolled Lk block.
+    Bundle
     code size therefore scales with their product, not with the number of Lk
     blocks alone. Cap that product at sixteen when possible, while retaining at
     least one Lk block per group. Once Lq alone needs sixteen or more tiles,
@@ -907,7 +908,8 @@ def spyre__sdpa_overrideable(
 
     # Bound each loop group's Lq-tile x unrolled-Lk-block product. Keeping many
     # Lk blocks together with a long Lq loop produces oversized bundles that can
-    # crash DXP or the runtime H2D launch. A sixteen-pair budget groups blocks
+    # crash the backend or the runtime H2D launch. A sixteen-pair budget groups
+    # blocks
     # while that is possible; once the Lq loop itself reaches that size, each Lk
     # block gets a separate group. The functional M/denominator/output SSA
     # carries are materialized between groups and then resume the exact same

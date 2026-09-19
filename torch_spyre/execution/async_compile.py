@@ -116,7 +116,7 @@ def _compile_to_dir(
     Shared by the cache-miss path and the no-cache path so that any change to
     the compilation sequence is applied in both places automatically.
 
-    EXPERIMENTAL: this used to run ``dxp_standalone -d <dir>``.  dbo-opt takes
+    This used to run ``dxp_standalone -d <dir>``.  dbo-opt takes
     the SDSC bundle as its *default* input -- a function of
     ``sdscbundle.sdsc_execute`` ops naming the SuperDsc JSON files beside it,
     which is exactly what ``generate_bundle`` just wrote -- so no ``--from-ktir``
