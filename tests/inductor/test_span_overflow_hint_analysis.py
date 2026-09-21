@@ -53,7 +53,7 @@ from torch._inductor.test_case import TestCase as InductorTestCase
 from torch._inductor.utils import run_and_get_code
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from utils_inductor import mock_backend_compiler, compare_with_cpu  # noqa: E402
+from utils_inductor import mock_device_execution, compare_with_cpu  # noqa: E402
 
 from torch_spyre._C import SpyreTensorLayout
 from torch_spyre._inductor import config
@@ -86,10 +86,6 @@ from torch_spyre._inductor.wsr.span_overflow_hint_analysis import (
 )
 import torch_spyre._inductor.wsr.propagate_named_dims as _pnd
 import torch_spyre._inductor.wsr.span_overflow_hint_analysis as soha
-
-
-_LAUNCH_JOBPLAN = "torch_spyre.execution.kernel_runner.launch_jobplan"
-_PREPARE_KERNEL = "torch_spyre.execution.kernel_runner.prepare_kernel"
 
 
 def _fixed_tiled_layout(shape, dtype=torch.float16):
@@ -5673,9 +5669,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
         """
         with (
             patch(self._PLAN_PATCH, _forced_span_plan_on_dim1(5, 20)),
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
         ):
             _, source_codes = run_and_get_code(torch.compile(fn, dynamic=False), *args)
         self.assertTrue(source_codes)
@@ -5945,11 +5939,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
             return x + y
 
         cfn = torch.compile(fn, dynamic=False)
-        with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x, y)
 
         self.assertTrue(source_codes)
@@ -5983,11 +5973,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
             return x.sum(dim=0)
 
         cfn = torch.compile(fn, dynamic=False)
-        with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x)
 
         self.assertTrue(source_codes)
@@ -6049,9 +6035,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
 
         cfn = torch.compile(fn, dynamic=False)
         with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             patch(
                 "torch_spyre._inductor.wsr.coarse_tile_span_overflow.plan_span_overflow_tile",
                 return_value=fake_plan,
@@ -6106,9 +6090,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
 
         cfn = torch.compile(fn, dynamic=False)
         with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             patch(
                 "torch_spyre._inductor.wsr.coarse_tile_span_overflow."
                 "plan_span_overflow_tile",
@@ -6176,9 +6158,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
 
         cfn = torch.compile(fn, dynamic=False)
         with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             patch(
                 "torch_spyre._inductor.wsr.coarse_tile_span_overflow."
                 "plan_span_overflow_tile",
@@ -6267,11 +6247,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
                 block = block[:j] + "debug_handle=<stripped>" + block[end:]
             return block
 
-        with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, auto_sources = run_and_get_code(
                 torch.compile(auto_fn, dynamic=False), x, y
             )
@@ -6290,11 +6266,7 @@ class TestSpanOverflowPointwiseCodegen(InductorTestCase):
             with spyre_hint(num_tiles_per_dim={"SO_H": auto_count}):
                 return x + y
 
-        with (
-            patch(_LAUNCH_JOBPLAN),
-            patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, manual_sources = run_and_get_code(
                 torch.compile(manual_hint_fn, dynamic=False), x, y
             )
@@ -6312,8 +6284,7 @@ class TestSpanOverflowNumericValidation(InductorTestCase):
     span-overflow producer-consumer joins.
 
     Every test class above this one either mocks out kernel launch/compile
-    (``patch(_LAUNCH_JOBPLAN)``, ``patch(_PREPARE_KERNEL)``,
-    ``mock_backend_compiler()``) or inspects internal Python state directly.
+    (``mock_device_execution()``) or inspects internal Python state directly.
     Those are valuable and cheap, and prove the *decision* to join is made
     correctly -- but none of them prove the resulting shared loop nest
     actually *executes* correctly on hardware. A join could be structurally
@@ -7222,9 +7193,5 @@ class TestSpanOverflowNumericValidation(InductorTestCase):
         with self.assertRaisesRegex(
             InductorError, "reduction-dimension tiling is not supported"
         ):
-            with (
-                patch(_LAUNCH_JOBPLAN),
-                patch(_PREPARE_KERNEL),
-                mock_backend_compiler(),
-            ):
+            with mock_device_execution():
                 run_and_get_code(cfn, x)

@@ -63,15 +63,13 @@ from torch_spyre._inductor import spyre_hint
 import torch_spyre._inductor.wsr.propagate_named_dims as _pnd
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from utils_inductor import mock_backend_compiler, compare_with_cpu, _compile_and_run  # noqa: E402
+from utils_inductor import mock_device_execution, compare_with_cpu, _compile_and_run  # noqa: E402
 
 _declare_tensor_dim = _pnd.declare_tensor_dim
 _name_tensor_dims = _pnd.name_tensor_dims
 copy_forced = torch.ops.spyre.copy_forced
 
 # Paths to mock for disabling actual device kernel execution.
-_LAUNCH_JOBPLAN = "torch_spyre.execution.kernel_runner.launch_jobplan"
-_PREPARE_KERNEL = "torch_spyre.execution.kernel_runner.prepare_kernel"
 
 # Set to False to run currently-raising tests normally instead of expecting raises.
 _EXPECT_RAISES = True
@@ -188,11 +186,7 @@ def run_coarse_tile_test(
 
     with fresh_cache():
         dev_tensors = _setup_dims_and_dev_tensors()
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(torch.compile(fn), *dev_tensors)
 
     if loopspec and not config.ignore_wsr_hints:
@@ -3604,11 +3598,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
             return torch.abs(x)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x)
         self.assertTrue(len(source_codes) > 0)
         # LoopSpec appears as an import even without tiling; check for a call.
@@ -3636,11 +3626,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(x_dev, ["A", "B"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -3672,9 +3658,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         staged_ownership = (("d0", 2, 0),)
         direct_ownership = (("d1", 2, 0),)
         with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             mock_patch(
                 "torch_spyre._inductor.read_copy_elision._per_core_view_on_buf",
                 side_effect=[
@@ -3744,11 +3728,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(x_dev, ["B", "D"])
 
         cfn = torch.compile(softmax_fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -3813,11 +3793,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(c_dev, ["A", "B"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev, c_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -3899,11 +3875,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
             return out_x, out_y
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev, y_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -3948,11 +3920,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(y_dev, ["A", "B"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev, y_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -3993,11 +3961,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(x_dev, ["M", "K"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -4050,11 +4014,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
                 return x + bias
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         src = source_codes[0]
         fill_op_match = re.search(
@@ -4116,11 +4076,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(y_dev, ["K", "N"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev, y_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -4165,11 +4121,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
         _name_tensor_dims(scale_dev, ["M"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev, scale_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -4372,11 +4324,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
                     return abs_x + y
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev, y_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -4460,9 +4408,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
 
         cfn = torch.compile(flash)
         with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             pytest.raises(Exception, match="partial reduction result consumed before"),
         ):
             run_and_get_code(cfn, queries_dev, keys_dev, values_dev)
@@ -4499,11 +4445,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
             return s
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -4619,11 +4561,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
             return output / denominator.unsqueeze(-1)
 
         cfn = torch.compile(flash)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(
                 cfn, queries_dev, keys_dev, values_dev, mask_dev
             )
@@ -4713,11 +4651,7 @@ class TestCoarseTileSpyreHints(InductorTestCase):
                 return q * v
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, Q_dev, V_dev)
 
         self.assertTrue(len(source_codes) > 0)
@@ -5115,11 +5049,7 @@ class TestNamedDimsHint(InductorTestCase):
         _name_tensor_dims(x_dev, ["M", "K"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5144,11 +5074,7 @@ class TestNamedDimsHint(InductorTestCase):
         _name_tensor_dims(x_dev, ["M", "K"])
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5179,11 +5105,7 @@ class TestNamedDimsHint(InductorTestCase):
         # Deliberately NO _declare_tensor_dim / _name_tensor_dims here.
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5220,11 +5142,7 @@ class TestCoarseTileReductionE2E(InductorTestCase):
                 return x.sum(dim=-1)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5268,11 +5186,7 @@ class TestCoarseTileReductionE2E(InductorTestCase):
                 return a @ b
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5316,11 +5230,7 @@ class TestCoarseTileReductionE2E(InductorTestCase):
                 return x.amax(dim=-1)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5359,11 +5269,7 @@ class TestCoarseTileReductionE2E(InductorTestCase):
                 return x.amin(dim=-1)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, x_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5846,11 +5752,7 @@ class TestCoarseTileMatmulKTilingE2E(InductorTestCase):
                 return torch.mm(a, b)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -5926,11 +5828,7 @@ class TestCoarseTileMoEBroadcastMatmulE2E(InductorTestCase):
             with spyre_hint(num_tiles_per_dim={"E": E}):
                 return torch.matmul(x.unsqueeze(0), w)
 
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(torch.compile(fn), x, w)
 
         tensor_args = []
@@ -5994,9 +5892,7 @@ class TestCoarseTileMoEBroadcastMatmulE2E(InductorTestCase):
                 return torch.matmul(x.unsqueeze(0), w)
 
         with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             mock_patch(
                 "torch_spyre._inductor.read_copy_elision._prove_matmul_direct_read",
                 return_value=(None, "forced test decline"),
@@ -6030,9 +5926,7 @@ class TestCoarseTileMoEBroadcastMatmulE2E(InductorTestCase):
         staged_view = PerCoreView((), (), num_cores=2)
         direct_view = PerCoreView((), (), num_cores=4)
         with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             mock_patch(
                 "torch_spyre._inductor.read_copy_elision._loop_advance_bound",
                 return_value=(0, 8192),
@@ -6223,9 +6117,7 @@ class TestCoarseTileMoEBroadcastMatmulE2E(InductorTestCase):
             return result
 
         with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
             mock_patch.object(superdsc, "_create_sdsc_tensors", side_effect=_spy),
         ):
             run_and_get_code(torch.compile(fn), x.to("spyre"), w.to("spyre"))
@@ -6357,9 +6249,7 @@ class TestCoarseTileNestedReductionE2E(InductorTestCase):
                 "torch_spyre._inductor.wsr.span_overflow_hint_analysis.MAX_SPAN_BYTES",
                 16 * 1024,
             ),
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
+            mock_device_execution(),
         ):
             _, source_codes = run_and_get_code(torch.compile(fn), a, b)
 
@@ -6426,11 +6316,7 @@ class TestCoarseTileNestedReductionE2E(InductorTestCase):
                     return torch.mm(a, b)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -6460,11 +6346,7 @@ class TestCoarseTileNestedReductionE2E(InductorTestCase):
                     return torch.mm(a, b)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -6495,11 +6377,7 @@ class TestCoarseTileNestedReductionE2E(InductorTestCase):
                     return torch.mm(a, b)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]
@@ -6540,11 +6418,7 @@ class TestCoarseTileNestedReductionE2E(InductorTestCase):
                     return torch.mm(a, b)
 
         cfn = torch.compile(fn)
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(cfn, a_dev, b_dev)
         self.assertTrue(len(source_codes) > 0)
         src = source_codes[0]

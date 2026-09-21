@@ -56,7 +56,7 @@ from torch_spyre._inductor.errors import Unsupported
 from torch_spyre._inductor.ir import FixedTiledLayout
 from torch_spyre._inductor.loop_info import CarriedReductionRecord
 from utils_inductor import (
-    mock_backend_compiler,
+    mock_device_execution,
     assert_lx_only_relayout_payload,
     capture_backend_output_dirs,
 )
@@ -78,9 +78,6 @@ from torch_spyre._inductor.spyre_kernel import SpyreKernel, _iter_op_specs
 from torch_spyre._inductor.scratchpad.plan_solver import LifetimeBoundBuffer
 from torch_spyre._inductor.core_mapping import remap_work_division
 from torch_spyre._inductor.spyre_kernel import simplify_op_spec
-
-_LAUNCH_JOBPLAN = "torch_spyre.execution.kernel_runner.launch_jobplan"
-_PREPARE_KERNEL = "torch_spyre.execution.kernel_runner.prepare_kernel"
 
 
 _declare_tensor_dim = _pnd.declare_tensor_dim
@@ -522,11 +519,7 @@ class TestNamedWorkDivisionHint(InductorTestCase):
             with spyre_hint(tiles={"M": 4}):
                 return torch.abs(x)
 
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(torch.compile(fn, dynamic=False), x)
         self.assertIn("LoopSpec(", source_codes[0])
         self.assertFalse(any("user-hint" in msg for msg in self._logs()))
@@ -550,11 +543,7 @@ class TestNamedWorkDivisionHint(InductorTestCase):
             with spyre_hint(tiles={"M": 4}, work_div={"N": 2}):
                 return torch.abs(x)
 
-        with (
-            mock_patch(_LAUNCH_JOBPLAN),
-            mock_patch(_PREPARE_KERNEL),
-            mock_backend_compiler(),
-        ):
+        with mock_device_execution():
             _, source_codes = run_and_get_code(torch.compile(fn, dynamic=False), x)
         self.assertIn("LoopSpec(", source_codes[0])
         self._assert_user_hint_logged()

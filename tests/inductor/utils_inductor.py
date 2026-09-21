@@ -27,6 +27,7 @@ import pytest
 from torch._inductor.utils import run_and_get_code
 
 import torch_spyre.execution.async_compile as async_compile_module
+import torch_spyre.execution.kernel_runner as kernel_runner_module
 import unittest
 
 DEVICE = torch.device("spyre")
@@ -849,6 +850,35 @@ def mock_backend_compiler():
         mock_patch.object(async_compile_module.subprocess, "run", side_effect=fake_run),
     ):
         yield m
+
+
+@contextmanager
+def mock_device_execution():
+    """Compile bundles without a backend compiler, and skip device launch.
+
+    The three stubs a codegen test needs, as one context manager: the backend
+    compiler (via :func:`mock_backend_compiler`, so the artifact the compile
+    path checks for is written), plus ``prepare_kernel`` and ``launch_jobplan``.
+
+    Replaces the hand-rolled three-mock stack that appeared ~53 times across six
+    files, each with its own copy of the two mock-target path strings. Naming the
+    combination once means a change to what "compile without a device" requires
+    lands in one place -- the reason the artifact check needed 62 call-site edits
+    was that this knowledge was duplicated at every site.
+
+    Patching by object attribute rather than by dotted string also means a
+    mistyped target is an AttributeError at patch time, not a patch that silently
+    does nothing.
+
+    Yields the ``subprocess.run`` mock, for tests that assert on the compile
+    invocation.
+    """
+    with (
+        mock_backend_compiler() as run,
+        mock_patch.object(kernel_runner_module, "prepare_kernel"),
+        mock_patch.object(kernel_runner_module, "launch_jobplan"),
+    ):
+        yield run
 
 
 @contextmanager
