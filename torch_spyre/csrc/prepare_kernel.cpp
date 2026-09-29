@@ -396,14 +396,41 @@ std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnDevice(
 std::unique_ptr<JobPlanStep> JobPlanBuilder::translateComputeOnHost(
     const nlohmann::json& cmd) {
   // This overload is only reached when there is NO adjacent DataTransfer H2D
-  // to consume (edge-case or test).  It is not expected in production
-  // SpyreCode — the translator always emits ComputeOnHost before a DataTransfer
-  // H2D.  Assert so that incorrect JSON is caught early.
-  TORCH_CHECK(false,
-              "translateComputeOnHost: ComputeOnHost must be immediately "
-              "followed by a DataTransfer H2D; isolated ComputeOnHost is "
-              "not supported");
-  return nullptr;  // unreachable
+  // to consume. The one form SpyreCode emits that way is deeptools' data-debug
+  // memdump: a D2H into a pinned buffer, then a ComputeOnHost whose ihandle
+  // names that buffer and whose DCI is DEBUG_MEMDUMP. Anything else is still
+  // rejected so that incorrect JSON is caught early.
+  constexpr const char* kIsolatedMsg =
+      "translateComputeOnHost: ComputeOnHost must be immediately followed by "
+      "a DataTransfer H2D; the only isolated ComputeOnHost supported is a "
+      "DEBUG_MEMDUMP reading a preceding D2H";
+
+  const std::string ihandle =
+      cmd.contains("ihandle") ? cmd["ihandle"].get<std::string>() : "";
+  auto it = ihandle.empty() ? pinned_buffer_map_.end()
+                            : pinned_buffer_map_.find(ihandle);
+  TORCH_CHECK(it != pinned_buffer_map_.end(), kIsolatedMsg, " (ihandle '",
+              ihandle, "' names no D2H buffer)");
+
+  TORCH_CHECK(cmd.contains("hcm"),
+              "ComputeOnHost command missing 'hcm' property");
+  auto hcm_data = std::make_unique<Hcm>();
+  try {
+    hcm_data->importJsonStr(cmd["hcm"].dump());
+  }
+  catch (const std::exception& e) {
+    TORCH_CHECK(false, "Failed to import Hcm for ihandle '", ihandle,
+                "': ", e.what());
+  }
+
+  const auto& dci_group = hcm_data->vdci.dciGroup_.info_;
+  TORCH_CHECK(dci_group.size() == 1 && dci_group.begin()->second.dcOpName_ ==
+                                           DataConvertOpFuncs::DEBUG_MEMDUMP,
+              kIsolatedMsg, " (ihandle '", ihandle,
+              "' is not a single DEBUG_MEMDUMP DCI)");
+
+  return std::make_unique<JobPlanStepHostDebugDump>(
+      std::move(hcm_data), it->second.data(), it->second.size());
 }
 
 /**

@@ -25,6 +25,7 @@
 
 #include "spyre_composite_address.h"
 #include "spyre_stream.h"
+#include "spyrecode-host-functions/processSpyreCodeArtifacts.h"
 
 namespace spyre {
 
@@ -174,6 +175,35 @@ void JobPlanStepHostCompute::write(std::ostream& os) const {
   os << "  Host Compute\n";
   os << "    Correction size: " << correction_size_ << " bytes\n";
   os << "    Device address: " << device_address_ << "\n";
+  os << "    Pipeline barrier: " << (pipeline_barrier_ ? "enabled" : "disabled")
+     << "\n";
+}
+
+void JobPlanStepHostDebugDump::construct(LaunchContext&,
+                                         const SpyreStream& stream) const {
+  // Captures this: the step is owned by the JobPlan, which outlives every
+  // launch of it. The DEBUG_MEMDUMP host function only reads its input, so
+  // there is no output buffer.
+  flex::Runtime_operation_cb_t callback = [this](void*) {
+    try {
+      deeptools::processComputeOnHostCommand(*hcm_, /*out=*/nullptr,
+                                             input_buffer_);
+    }
+    catch (const std::exception& e) {
+      // Runs on flex's callback thread, where an escaped exception terminates
+      // the process; a failed debug dump should not take the run down.
+      TORCH_WARN("Debug memdump host function failed: ", e.what());
+    }
+  };
+  auto* params = flex::createHostCallbackParams(
+      std::move(callback), /*callback_user_data=*/nullptr, pipeline_barrier_);
+  stream.launchHostCallback(params);
+  flex::destroyHostCallbackParams(params);
+}
+
+void JobPlanStepHostDebugDump::write(std::ostream& os) const {
+  os << "  Host Debug Dump\n";
+  os << "    Input buffer: " << input_buffer_ << " (" << size_ << " bytes)\n";
   os << "    Pipeline barrier: " << (pipeline_barrier_ ? "enabled" : "disabled")
      << "\n";
 }

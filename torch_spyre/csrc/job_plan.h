@@ -564,6 +564,39 @@ class JobPlanStepHostCompute final : public JobPlanStep {
 };
 
 /**
+ * @brief Host-side consumer of a D2H readback (deeptools data-debug memdump)
+ *
+ * The SpyreCode for a data-debug run ends in DataTransfer D2H -> ComputeOnHost:
+ * the checkpointed tensors are read back into a pinned buffer, and the host
+ * function (a DEBUG_MEMDUMP DCI) prints them. Unlike JobPlanStepHostCompute
+ * this produces nothing for the device, so there is no H2D to launch.
+ *
+ * construct() queues a host callback on the same stream as the D2H (role Dev,
+ * pipeline barrier on), so it runs only once the readback has landed.
+ */
+class JobPlanStepHostDebugDump final : public JobPlanStep {
+ public:
+  /**
+   * @param hcm Compiler-provided metadata carrying the DEBUG_MEMDUMP DCI
+   * @param input_buffer Pinned host buffer the preceding D2H fills (non-owning;
+   *            JobPlan owns it via pinned_buffers)
+   * @param size Size of input_buffer in bytes
+   */
+  JobPlanStepHostDebugDump(std::unique_ptr<Hcm> hcm, const void* input_buffer,
+                           size_t size)
+      : hcm_(std::move(hcm)), input_buffer_(input_buffer), size_(size) {}
+
+  void construct(LaunchContext& ctx, const SpyreStream& stream) const override;
+
+  void write(std::ostream& os) const override;
+
+ private:
+  std::unique_ptr<Hcm> hcm_;
+  const void* input_buffer_;  // Non-owning pointer (JobPlan owns the buffer)
+  size_t size_;
+};
+
+/**
  * @brief A torch-spyre internal container for executing a unit of work
  *
  * A JobPlan bundles everything needed to execute a unit of work on a stream.
